@@ -106,6 +106,8 @@ public:
 		("cl-plat",   value<unsigned>(&m_openclPlatform)->default_value(0), "Opencl platform.\n")
 		("cl-devs",   value<std::vector<unsigned>>()->multitoken(), "Opencl device list.\n")
 		("cl-kern",   value<unsigned>(&m_openclSelectedKernel)->default_value(0), "Opencl kernel. 0 - Opencl, 1 - binary.\n")
+		("cl-work",   value<unsigned>(&m_openclWorkSize)->default_value(192), "Opencl work size. 64, 128, 192 or 256\n")
+		("cl-int",    value<unsigned>(&m_openclIntensity)->default_value(512), "Opencl intensity\n")
 #endif
 #if ETH_ETHASHCUDA
 		("cu-grid",   value<unsigned>(&m_cudaGridSize)->default_value(8192), "Cuda grid size.\n")
@@ -193,6 +195,14 @@ public:
 			cerr << "CL kernel must be 0 or 1.\n";
 			exit(-1);
 		}
+		if ((m_openclWorkSize != 64) &&
+		    (m_openclWorkSize != 128) &&
+		    (m_openclWorkSize != 192) &&
+		    (m_openclWorkSize != 256)) {
+			cerr << "CL work size must be 64, 128, 192, or 256.\n";
+			exit(-1);
+		}
+
 #endif
 
 		if ((m_openclDeviceCount + m_cudaDeviceCount) > MAX_GPUS) {
@@ -246,7 +256,9 @@ public:
 			        m_openclPlatform,
 			        m_dagLoadMode,
 			        m_dagCreateDevice,
-			        m_eval
+			        m_eval,
+			        m_openclWorkSize,
+			        m_openclIntensity
 			    ))
 				exit(1);
 			CLMiner::setNumInstances(m_miningThreads);
@@ -346,6 +358,8 @@ private:
 	unsigned m_openclSelectedKernel = 0;  ///< A numeric value for the selected OpenCL kernel
 	vector<unsigned> m_openclDevices = vector<unsigned>(MAX_MINERS, -1);
 	unsigned m_localWorkSize;
+	unsigned m_openclWorkSize;
+	unsigned m_openclIntensity;
 #endif
 #if ETH_ETHASHCUDA
 	vector<unsigned> m_cudaDevices = vector<unsigned>(MAX_MINERS, -1);

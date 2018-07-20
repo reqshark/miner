@@ -19,11 +19,9 @@ typedef struct {
 	unsigned workIntensity;
 } clConfig;
 
-std::map <std::string, clConfig> optimalConfigs = {
-//                      work,  intensity
-	{"opencl",          {192,   512}},
-	{"ellesmere",       {192,   512}},
-	{"baffin",          {192,   512}}
+std::set <std::string> validConfigs = {
+	"ellesmere",
+	"baffin"
 };
 
 namespace dev
@@ -82,6 +80,9 @@ std::vector<cl::Device> getDevices(std::vector<cl::Platform> const& _platforms, 
 bool CLMiner::s_eval = false;
 unsigned CLMiner::s_platformId = 0;
 unsigned CLMiner::s_numInstances = 0;
+unsigned CLMiner::s_workIntensity;
+unsigned CLMiner::s_workGroupSize;
+
 vector<int> CLMiner::s_devices(MAX_MINERS, -1);
 
 CLMiner::CLMiner(FarmFace& _farm, unsigned _index):
@@ -129,7 +130,7 @@ void CLMiner::workLoop()
 
 					loginfo(workerName() << " - New seed " << w.seed);
 					init(w.seed);
-					Run = m_workIntensity * m_computeUnits * m_workgroupSize;
+					Run = s_workIntensity * m_computeUnits * s_workGroupSize;
 				}
 
 				// Upper 64 bits of the boundary.
@@ -172,7 +173,7 @@ void CLMiner::workLoop()
 			// Run the kernel.
 
 			m_searchKernel.setArg(4, startNonce);
-			m_queue.enqueueNDRangeKernel(m_searchKernel, cl::NullRange, Run, m_workgroupSize);
+			m_queue.enqueueNDRangeKernel(m_searchKernel, cl::NullRange, Run, s_workGroupSize);
 
 			// Report results while the kernel is running.
 			if (count) {
@@ -269,9 +270,13 @@ bool CLMiner::configureGPU(
     unsigned _platformId,
     unsigned _dagLoadMode,
     unsigned _dagCreateDevice,
-    bool _eval
+    bool _eval,
+    unsigned work,
+    unsigned intensity
 )
 {
+	s_workGroupSize = work;
+	s_workIntensity = intensity;
 	s_dagLoadMode = _dagLoadMode;
 	s_dagCreateDevice = _dagCreateDevice;
 	s_eval = _eval;
@@ -407,30 +412,24 @@ bool CLMiner::init(const h256& seed)
 			code = string(CLMiner_kernel, CLMiner_kernel + sizeof(CLMiner_kernel));
 		}
 
-		clConfig conf;
-		if (s_clKernelName == CLKernelName::Opencl)
-			conf = optimalConfigs["opencl"];
-		else { /* if (s_clKernelName == CLKernelName::Binary) */
+		if (s_clKernelName == CLKernelName::Binary) {
 			std::string name = device.getInfo<CL_DEVICE_NAME>();
 			std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-			if (optimalConfigs.find(name) == optimalConfigs.end()) {
+			if (validConfigs.find(name) == validConfigs.end()) {
 				logerror(workerName() << " - Can't find configuration for binary kernel " << name);
 				throw runtime_error("No kernel");
 			}
-			conf = optimalConfigs[name];
 		}
-		m_workgroupSize = conf.workGroupSize;
-		m_workIntensity = conf.workIntensity;
 
 		m_computeUnits = device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
 		// Apparently some 36 CU devices return a bogus 14!!!
 		m_computeUnits = m_computeUnits == 14 ? 36 : m_computeUnits;
 		logwarn(workerName()
-		        << " - work group " << m_workgroupSize
-		        << ", work intensity " << m_workIntensity);
+		        << " - work group " << s_workGroupSize
+		        << ", work intensity " << s_workIntensity);
 
 		uint32_t lightSize64 = (unsigned)(light->data().size() / sizeof(node));
-		addDefinition(code, "WORKSIZE", m_workgroupSize);
+		addDefinition(code, "WORKSIZE", s_workGroupSize);
 		//addDefinition(code, "DAG_SIZE", m_dagSize128);
 		//addDefinition(code, "LIGHT_SIZE", lightSize64);
 		addDefinition(code, "PLATFORM", platformId);
@@ -458,7 +457,7 @@ bool CLMiner::init(const h256& seed)
 			/* Open kernels/{device.getInfo<CL_DEVICE>}.bin */
 			std::string name = device.getInfo<CL_DEVICE_NAME>();
 			std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-			fname_strm << boost::dll::program_location().parent_path().string() << "/kernels/" << name << m_workgroupSize << ".bin";
+			fname_strm << boost::dll::program_location().parent_path().string() << "/kernels/" << name << s_workGroupSize << ".bin";
 
 			kernel_file.open(
 			    fname_strm.str(),
@@ -530,7 +529,7 @@ bool CLMiner::init(const h256& seed)
 		m_searchBuffer = cl::Buffer(m_context, CL_MEM_WRITE_ONLY, sizeof(search_results));
 
 		uint32_t const work = (uint32_t)(dagSize / sizeof(node));
-		uint32_t Run = m_workIntensity * m_computeUnits * m_workgroupSize;
+		uint32_t Run = s_workIntensity * m_computeUnits * s_workGroupSize;
 
 		m_dagKernel.setArg(1, m_light);
 		m_dagKernel.setArg(2, m_dag);
@@ -539,7 +538,7 @@ bool CLMiner::init(const h256& seed)
 		auto startDAG = std::chrono::steady_clock::now();
 		for (uint32_t i = 0; i < work; i += Run) {
 			m_dagKernel.setArg(0, i);
-			m_queue.enqueueNDRangeKernel(m_dagKernel, cl::NullRange, Run, m_workgroupSize);
+			m_queue.enqueueNDRangeKernel(m_dagKernel, cl::NullRange, Run, s_workGroupSize);
 			m_queue.finish();
 		}
 		auto endDAG = std::chrono::steady_clock::now();

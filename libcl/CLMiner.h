@@ -59,7 +59,9 @@ public:
 	    unsigned _platformId,
 	    unsigned _dagLoadMode,
 	    unsigned _dagCreateDevice,
-	    bool _eval
+	    bool _eval,
+	    unsigned groupSize,
+	    unsigned intensity
 	);
 	static void setNumInstances(unsigned _instances)
 	{
@@ -91,8 +93,6 @@ private:
 	cl::Buffer m_header;
 	cl::Buffer m_searchBuffer;
 	unsigned m_dagSize128;
-	unsigned m_workIntensity;
-	unsigned m_workgroupSize;
 	unsigned m_computeUnits;
 
 	static bool s_eval;
@@ -100,6 +100,8 @@ private:
 	static unsigned s_numInstances;
 	static CLKernelName s_clKernelName;
 	static vector<int> s_devices;
+	static unsigned s_workIntensity;
+	static unsigned s_workGroupSize;
 };
 
 static const h256  headerBuffer;
