@@ -17,6 +17,10 @@
 
 
 
+#if (defined(__Tahiti__) || defined(__Pitcairn__) || defined(__Capeverde__) || defined(__Oland__) || defined(__Hainan__))
+#define LEGACY
+#endif
+
 #if defined(cl_amd_media_ops)
 #pragma OPENCL EXTENSION cl_amd_media_ops : enable
 #elif defined(cl_nv_pragma_unroll)
@@ -34,6 +38,7 @@ uint amd_bitalign(uint src0, uint src1, uint src2)
 #error "WORKSIZE has to be a multiple of 4"
 #endif
 
+#define MAX_OUTPUTS 0xFFu
 #define ACCESSES  64
 #define FNV_PRIME 0x01000193U
 
@@ -66,6 +71,10 @@ static __constant uint2 const Keccak_f1600_RC[24] = {
 };
 
 #ifdef cl_amd_media_ops
+
+#ifdef LEGACY
+#define barrier(x) mem_fence(x)
+#endif
 
 #define ROTL64_1(x, y) amd_bitalign((x), (x).s10, 32 - (y))
 #define ROTL64_2(x, y) amd_bitalign((x).s10, (x), 32 - (y))
@@ -192,6 +201,27 @@ typedef union {
 } compute_hash_share;
 
 
+#ifdef LEGACY
+
+#define MIX(x) \
+do { \
+    if (get_local_id(0) == lane_idx) { \
+        uint s = mix.s0; \
+        s = select(mix.s1, s, (x) != 1); \
+        s = select(mix.s2, s, (x) != 2); \
+        s = select(mix.s3, s, (x) != 3); \
+        s = select(mix.s4, s, (x) != 4); \
+        s = select(mix.s5, s, (x) != 5); \
+        s = select(mix.s6, s, (x) != 6); \
+        s = select(mix.s7, s, (x) != 7); \
+        buffer[hash_id] = fnv(init0 ^ (a + x), s) % DAG_SIZE; \
+    } \
+    barrier(CLK_LOCAL_MEM_FENCE); \
+    mix = fnv(mix, g_dag[buffer[hash_id]].uint8s[thread_id]); \
+} while(0)
+
+#else
+
 #define MIX(x) \
 do { \
     uint s = mix.s0; \
@@ -202,17 +232,21 @@ do { \
     s = select(mix.s5, s, (x) != 5); \
     s = select(mix.s6, s, (x) != 6); \
     s = select(mix.s7, s, (x) != 7); \
-    buffer[get_local_id(0)] = fnv(init0 ^ (a + x), s) % dag_size; \
+    buffer[get_local_id(0)] = fnv(init0 ^ (a + x), s) % DAG_SIZE; \
+    /*barrier(CLK_LOCAL_MEM_FENCE); mem_fence(CLK_LOCAL_MEM_FENCE);*/ \
     mix = fnv(mix, g_dag[buffer[lane_idx]].uint8s[thread_id]); \
-    mem_fence(CLK_LOCAL_MEM_FENCE); \
+    /*barrier(CLK_LOCAL_MEM_FENCE);*/ mem_fence(CLK_LOCAL_MEM_FENCE); \
 } while(0)
+
+#endif
+
 
 __attribute__((reqd_work_group_size(WORKSIZE, 1, 1)))
 __kernel void search(
     __global volatile uint* restrict g_output,
     __constant uint2 const* g_header,
     __global ulong8 const* _g_dag,
-    uint dag_size,
+    uint DAG_SIZE,
     ulong start_nonce,
     ulong target,
     uint isolate,
@@ -227,7 +261,11 @@ __kernel void search(
 		const uint hash_id = get_local_id(0) / 4;
 
 		__local compute_hash_share sharebuf[WORKSIZE / 4];
+#ifdef LEGACY
+		__local uint buffer[WORKSIZE / 4];
+#else
 		__local uint buffer[WORKSIZE];
+#endif
 		__local compute_hash_share* const share = sharebuf + hash_id;
 
 
@@ -287,8 +325,12 @@ __kernel void search(
 
 				barrier(CLK_LOCAL_MEM_FENCE);
 
+#ifdef LEGACY
+				for (uint a = 0; a < (ACCESSES & isolate); a += 8) {
+#else
 #pragma unroll 1
 				for (volatile uint a = 0; a < ACCESSES; a += 8) {
+#endif
 					const uint lane_idx = 4 * hash_id + a / 8 % 4;
 					for (volatile uint x = 0; x < 8; ++x)
 						MIX(x);
@@ -325,11 +367,10 @@ __kernel void search(
 			state[24] = (uint2)(0);
 		}
 
-		if (as_ulong(as_uchar8(state[0]).s76543210) > target)
-			return;
-		if (atomic_inc(&g_output[255]))
-			return;
-		g_output[0] = gid;
+		if (as_ulong(as_uchar8(state[0]).s76543210) < target) {
+			uint slot = min(MAX_OUTPUTS - 1u, atomic_inc(&g_output[MAX_OUTPUTS]));
+			g_output[slot] = gid;
+		}
 	}
 }
 
@@ -357,8 +398,8 @@ static void SHA3_512(uint2* s, uint isolate)
 		s[i] = st[i];
 }
 
-__kernel void GenerateDAG(uint start, __global const uint16* _Cache, __global uint16* _DAG, uint LIGHT_SIZE,
-                          uint isolate)
+__kernel void GenerateDAG(uint start, __global const uint16* _Cache, __global uint16* _DAG,
+                          uint LIGHT_SIZE, /* uint DAG_SIZE, */ uint isolate)
 {
 	__global const Node* Cache = (__global const Node*) _Cache;
 	__global Node* DAG = (__global Node*) _DAG;
@@ -384,5 +425,7 @@ __kernel void GenerateDAG(uint start, __global const uint16* _Cache, __global ui
 
 	SHA3_512(DAGNode.qwords, isolate);
 
+	//if (NodeIdx < DAG_SIZE)
 	DAG[NodeIdx] = DAGNode;
 }
+
