@@ -2,13 +2,17 @@
 
 INSTALLDIR=/usr/local/bin/kernels
 
-./build ellesmere 64
-./build ellesmere 128
-./build ellesmere 192
-./build ellesmere 256 
-./build baffin 64
-./build baffin 128
-./build baffin 192
-./build baffin 256 
+./buildisa ellesmere 64
+./buildisa ellesmere 128
+./buildisa ellesmere 192
+./buildisa ellesmere 256 
+./buildisa baffin 64
+./buildisa baffin 128
+./buildisa baffin 192
+./buildisa baffin 256 
+./buildisa fiji 64
+./buildisa fiji 128
+./buildisa fiji 192
+./buildisa fiji 256 
 
 sudo cp bin/* $INSTALLDIR
