@@ -28,6 +28,11 @@
 #include <libproto/PoolManager.h>
 #include <libproto/EthStratumClient.h>
 #include <libdevcore/Log.h>
+#if API_CORE
+#include <libapi/api/Api.h>
+#include <libapi/http/httpServer.h>
+#include <libapi/rest/restServer.h>
+#endif
 
 using namespace std;
 using namespace dev;
@@ -111,6 +116,13 @@ public:
 		 "Cuda schedule mode. 0 - auto, 1 - spin, 2 - yield, 4 - sync\n")
 		("cu-strm",   value<unsigned>(&m_numStreams)->default_value(2), "Cuda streams\n")
 #endif
+#if API_CORE
+		("api",       value<int>(&m_api_port)->default_value(0), "API server port number. 0 - disable, < 0 - read-only.\n")
+		("http",      value<unsigned>(&m_http_port)->default_value(0), "HTTP server port number. 0 - disable\n")
+		("rest",      value<unsigned>(&m_rest_port)->default_value(0),
+		 "RESTFUL server port number. 0 - disable. Supported paths are /stats and /gpu/<n>\n")
+#endif
+
 		("stop",      value<unsigned>(&g_stopAfter)->default_value(0), "Stop after minutes. 0 - never stop.\n")
 		;
 
@@ -143,8 +155,7 @@ public:
 		URI uri;
 		try {
 			uri = url;
-		}
-		catch (std::exception const& e) {
+		} catch (std::exception const& e) {
 			cerr << "Bad endpoint address: " << url << " - " << e.what() << endl;
 			exit(-1);
 		}
@@ -300,6 +311,14 @@ public:
 
 		mgr.addConnection(m_endpoint);
 
+#if API_CORE
+		Api api(m_api_port, f);
+		if (m_http_port)
+			http_server.run(m_http_port, &f, &mgr);
+		if (m_rest_port)
+			rest_server.run(m_rest_port, &f, &mgr);
+#endif
+
 		// Start PoolManager
 		mgr.start();
 
@@ -336,6 +355,12 @@ private:
 	unsigned m_cudaBlockSize;
 	unsigned m_parallelHash    = 4;
 #endif
+#if API_CORE
+	int m_api_port = 0;
+	unsigned m_http_port = 0;
+	unsigned m_rest_port = 0;
+#endif
+
 	bool m_eval = false;
 	unsigned m_dagLoadMode = 0; // parallel
 	unsigned m_dagCreateDevice = 0;
@@ -372,16 +397,14 @@ int main(int argc, char** argv)
 		// Mining options:
 		m.interpretOption(argc, argv);
 
-	}
-	catch (std::exception const& ex) {
+	} catch (std::exception const& ex) {
 		cerr << "Error parsing arguments: " << ex.what() << "\n";
 		exit(-1);
 	}
 
 	try {
 		m.execute();
-	}
-	catch (std::exception& ex) {
+	} catch (std::exception& ex) {
 		cerr << "Error running miner: " << ex.what() << "\n";
 		exit(-1);
 	}
