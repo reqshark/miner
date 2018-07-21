@@ -1,7 +1,4 @@
 #!/bin/bash
-
-INSTALLDIR=/usr/local/bin/kernels
-
 ./buildisa ellesmere 64
 ./buildisa ellesmere 128
 ./buildisa ellesmere 192
@@ -10,9 +7,3 @@ INSTALLDIR=/usr/local/bin/kernels
 ./buildisa baffin 128
 ./buildisa baffin 192
 ./buildisa baffin 256 
-./buildisa fiji 64
-./buildisa fiji 128
-./buildisa fiji 192
-./buildisa fiji 256 
-
-sudo cp bin/* $INSTALLDIR

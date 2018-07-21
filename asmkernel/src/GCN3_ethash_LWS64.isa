@@ -5,4 +5,6 @@ worksize = 64
 .driver_version 200406
 .include "GCN_ethash_globaldata.isa"
 .include "GCN3_ethash_search.isa"
+.ifdef GENDAG
 .include "GCN3_ethash_GenerateDAG.isa"
+.endif

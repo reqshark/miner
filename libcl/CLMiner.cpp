@@ -507,13 +507,11 @@ bool CLMiner::init(const h256& seed)
 			m_dag = cl::Buffer(m_context, CL_MEM_READ_ONLY, dagSize);
 			loginfo(workerName() << " - Loading kernels");
 
-			if (s_clKernelName >= CLKernelName::Binary && loadedBinary) {
+			if (s_clKernelName >= CLKernelName::Binary && loadedBinary)
 				m_searchKernel = cl::Kernel(binaryProgram, "search");
-				m_dagKernel = cl::Kernel(binaryProgram, "GenerateDAG");
-			} else {
+			else
 				m_searchKernel = cl::Kernel(program, "search");
-				m_dagKernel = cl::Kernel(program, "GenerateDAG");
-			}
+			m_dagKernel = cl::Kernel(program, "GenerateDAG");
 			loginfo(workerName() << " - Writing light cache buffer");
 			m_queue.enqueueWriteBuffer(m_light, CL_TRUE, 0, light->data().size(), light->data().data());
 		} catch (std::exception const& err) {

@@ -113,6 +113,7 @@ add_subdirectory(libproto)
 
 if (ETHASHCL)
 	add_subdirectory(libcl)
+	add_subdirectory(asmkernel)
 endif ()
 if (ETHASHCUDA)
 	add_subdirectory(libcuda)
