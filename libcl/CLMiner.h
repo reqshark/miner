@@ -72,10 +72,6 @@ public:
 		for (unsigned i = 0; i < _selectedDeviceCount; i++)
 			s_devices[i] = _devices[i];
 	}
-	static void setCLKernel(unsigned _clKernel)
-	{
-		s_clKernelName = (CLKernelName)_clKernel;
-	}
 protected:
 	void kick_miner() override;
 
@@ -98,7 +94,6 @@ private:
 	static bool s_eval;
 	static unsigned s_platformId;
 	static unsigned s_numInstances;
-	static CLKernelName s_clKernelName;
 	static vector<int> s_devices;
 	static unsigned s_workIntensity;
 	static unsigned s_workGroupSize;

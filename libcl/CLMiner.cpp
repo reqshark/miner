@@ -34,8 +34,6 @@ namespace eth
 typedef  uint32_t search_results[MAX_OUTPUTS + 1];
 
 
-CLKernelName CLMiner::s_clKernelName;
-
 namespace
 {
 
@@ -403,23 +401,11 @@ bool CLMiner::init(const h256& seed)
 		// TODO: Just use C++ raw string literal.
 		string code;
 
-		if (s_clKernelName == CLKernelName::Opencl) {
-			loginfo(workerName() << " - OpenCL kernel: opencl kernel");
-			code = string(CLMiner_kernel, CLMiner_kernel + sizeof(CLMiner_kernel));
-		} else { // Fallback to experimental kernel if binary loader fails
-			loginfo(workerName() << " - OpenCL kernel: " << (s_clKernelName == CLKernelName::Binary ?  "Binary" : "opencl") <<
-			        " kernel");
-			code = string(CLMiner_kernel, CLMiner_kernel + sizeof(CLMiner_kernel));
-		}
+		loginfo(workerName() << " - OpenCL kernel: opencl kernel");
+		code = string(CLMiner_kernel, CLMiner_kernel + sizeof(CLMiner_kernel));
 
-		if (s_clKernelName == CLKernelName::Binary) {
-			std::string name = device.getInfo<CL_DEVICE_NAME>();
-			std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-			if (validConfigs.find(name) == validConfigs.end()) {
-				logerror(workerName() << " - Can't find configuration for binary kernel " << name);
-				throw runtime_error("No kernel");
-			}
-		}
+		std::string name = device.getInfo<CL_DEVICE_NAME>();
+		std::transform(name.begin(), name.end(), name.begin(), ::tolower);
 
 		m_computeUnits = device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
 		// Apparently some 36 CU devices return a bogus 14!!!
@@ -448,8 +434,7 @@ bool CLMiner::init(const h256& seed)
 		// If we have a binary kernel, we load it in tandem with the opencl,
 		// that way, we can use the dag generate opencl code
 		bool loadedBinary = false;
-
-		if (s_clKernelName >= CLKernelName::Binary) {
+		{
 			std::ifstream kernel_file;
 			vector<unsigned char> bin_data;
 			std::stringstream fname_strm;
@@ -459,32 +444,39 @@ bool CLMiner::init(const h256& seed)
 			std::transform(name.begin(), name.end(), name.begin(), ::tolower);
 			fname_strm << boost::dll::program_location().parent_path().string() << "/kernels/" << name << s_workGroupSize << ".bin";
 
-			kernel_file.open(
-			    fname_strm.str(),
-			    ios::in | ios::binary
-			);
+			try {
+				kernel_file.open(
+				    fname_strm.str(),
+				    ios::in | ios::binary
+				);
 
-			if (kernel_file.good()) {
+				if (kernel_file.good()) {
 
-				/* Load the data vector with file data */
-				kernel_file.unsetf(std::ios::skipws);
-				bin_data.insert(bin_data.begin(),
-				                std::istream_iterator<unsigned char>(kernel_file),
-				                std::istream_iterator<unsigned char>());
+					/* Load the data vector with file data */
+					kernel_file.unsetf(std::ios::skipws);
+					bin_data.insert(bin_data.begin(),
+					                std::istream_iterator<unsigned char>(kernel_file),
+					                std::istream_iterator<unsigned char>());
 
-				/* Setup the program */
-				cl::Program::Binaries blobs({bin_data});
-				cl::Program program(m_context, { device }, blobs);
-				try {
-					program.build({ device }, options);
-					loginfo(workerName() << " - " << fname_strm.str() << " sucessfully loaded.");
-					binaryProgram = program;
-					loadedBinary = true;
-				} catch (std::exception const&) {
-					logerror(workerName() << " - Build info: " << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device));
+					/* Setup the program */
+					cl::Program::Binaries blobs({bin_data});
+					cl::Program program(m_context, { device }, blobs);
+					try {
+						program.build({ device }, options);
+						loginfo(workerName() << " - " << fname_strm.str() << " sucessfully loaded.");
+						binaryProgram = program;
+						loadedBinary = true;
+					} catch (std::exception const&) {
+						logerror(workerName() << " - Build info: " << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device));
+						logwarn(workerName() << " - Binary kernel, failed to load: " << fname_strm.str());
+						logwarn(workerName() << " - Falling back to OpenCL kernel...");
+					}
+				} else {
+					logwarn(workerName() << " - Binary kernel, failed to load: " << fname_strm.str());
+					logwarn(workerName() << " - Falling back to OpenCL kernel...");
 				}
-			} else {
-				logwarn(workerName() << " - Instructed to load binary kernel, but failed to load kernel: " << fname_strm.str());
+			} catch (...) {
+				logwarn(workerName() << " - Binary kernel, failed to load: " << fname_strm.str());
 				logwarn(workerName() << " - Falling back to OpenCL kernel...");
 			}
 		}
@@ -507,7 +499,7 @@ bool CLMiner::init(const h256& seed)
 			m_dag = cl::Buffer(m_context, CL_MEM_READ_ONLY, dagSize);
 			loginfo(workerName() << " - Loading kernels");
 
-			if (s_clKernelName >= CLKernelName::Binary && loadedBinary)
+			if (loadedBinary)
 				m_searchKernel = cl::Kernel(binaryProgram, "search");
 			else
 				m_searchKernel = cl::Kernel(program, "search");

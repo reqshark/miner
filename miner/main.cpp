@@ -105,7 +105,6 @@ public:
 #if ETH_ETHASHCL
 		("cl-plat",   value<unsigned>(&m_openclPlatform)->default_value(0), "Opencl platform.\n")
 		("cl-devs",   value<std::vector<unsigned>>()->multitoken(), "Opencl device list.\n")
-		("cl-kern",   value<unsigned>(&m_openclSelectedKernel)->default_value(0), "Opencl kernel. 0 - Opencl, 1 - binary.\n")
 		("cl-work",   value<unsigned>(&m_openclWorkSize)->default_value(192), "Opencl work size. 64, 128, 192 or 256\n")
 		("cl-int",    value<unsigned>(&m_openclIntensity)->default_value(512), "Opencl intensity\n")
 #endif
@@ -191,10 +190,6 @@ public:
 			m_openclDevices = vm["cl-devs"].as<vector<unsigned>>();
 		}
 
-		if (m_openclSelectedKernel > (unsigned)CLKernelName::Binary) {
-			cerr << "CL kernel must be 0 or 1.\n";
-			exit(-1);
-		}
 		if ((m_openclWorkSize != 64) &&
 		    (m_openclWorkSize != 128) &&
 		    (m_openclWorkSize != 192) &&
@@ -249,8 +244,6 @@ public:
 				CLMiner::setDevices(m_openclDevices, m_openclDeviceCount);
 				m_miningThreads = m_openclDeviceCount;
 			}
-
-			CLMiner::setCLKernel(m_openclSelectedKernel);
 
 			if (!CLMiner::configureGPU(
 			        m_openclPlatform,
@@ -355,7 +348,6 @@ private:
 	unsigned m_openclDeviceCount = 0;
 	unsigned m_cudaDeviceCount = 0;
 #if ETH_ETHASHCL
-	unsigned m_openclSelectedKernel = 0;  ///< A numeric value for the selected OpenCL kernel
 	vector<unsigned> m_openclDevices = vector<unsigned>(MAX_MINERS, -1);
 	unsigned m_localWorkSize;
 	unsigned m_openclWorkSize;
