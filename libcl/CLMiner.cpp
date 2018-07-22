@@ -526,9 +526,17 @@ bool CLMiner::init(const h256& seed)
 		m_dagKernel.setArg(3, lightSize64);
 		m_dagKernel.setArg(4, 0xffffffff);
 		auto startDAG = std::chrono::steady_clock::now();
-		for (uint32_t i = 0; i < work; i += Run) {
-			m_dagKernel.setArg(0, i);
+		uint32_t entry;
+		for (entry = 0; entry <= work - Run; entry += Run) {
+			m_dagKernel.setArg(0, entry);
 			m_queue.enqueueNDRangeKernel(m_dagKernel, cl::NullRange, Run, s_workGroupSize);
+			m_queue.finish();
+		}
+		if (entry < work) {
+			uint32_t left = work - entry;
+			left = (left + s_workGroupSize - 1) / s_workGroupSize;
+			m_dagKernel.setArg(0, entry);
+			m_queue.enqueueNDRangeKernel(m_dagKernel, cl::NullRange, left * s_workGroupSize, s_workGroupSize);
 			m_queue.finish();
 		}
 		auto endDAG = std::chrono::steady_clock::now();
